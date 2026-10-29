@@ -1,0 +1,93 @@
+name: APEXUS 1V | Windows Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apexus-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Upgrade build tools
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Verify Python environment
+        run: |
+          python --version
+          python -m pip check
+          python -m PyInstaller --version
+
+      - name: Build APEXUS 1V
+        run: >
+          python -m PyInstaller
+          --noconfirm
+          --clean
+          --onefile
+          --windowed
+          --name APEXUS_1V
+          --hidden-import=interface
+          --hidden-import=chat
+          --hidden-import=settings
+          main.py
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          $exe = "dist/APEXUS_1V.exe"
+
+          if (!(Test-Path $exe)) {
+            throw "Build failed: executable was not found."
+          }
+
+          $file = Get-Item $exe
+
+          if ($file.Length -le 0) {
+            throw "Build failed: executable is empty."
+          }
+
+          Write-Host "Build successful."
+          Write-Host "File: $($file.FullName)"
+          Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: APEXUS_1V-windows-${{ github.sha }}
+          path: dist/APEXUS_1V.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
